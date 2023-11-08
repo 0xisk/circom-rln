@@ -27,6 +27,69 @@ describe("Test rln.circom", function () {
         circuit = await tester(circuitPath);
     });
 
+    it("should be able to cover AnonKlub case", async function () {
+        // Public inputs
+        const x = genFieldElement();
+        const externalNullifier = genFieldElement();
+        // Private inputs
+        const identitySecret = genFieldElement();
+        const identitySecretCommitment = poseidon([identitySecret]);
+        const merkleProof = genMerkleProof([identitySecretCommitment], 0)
+        const merkleRoot = merkleProof.root
+        const userMessageLimit = BigInt(1)
+        // valid message id is in the range [0, userMessageLimit-1]
+        const messageIds = [userMessageLimit - BigInt(1), userMessageLimit]
+
+        for (let i = 0; i < messageIds.length; i++) {
+
+            if (i === 0) {
+                console.log("messageIds 1", messageIds[i])
+                const inputs = {
+                    // Private inputs
+                    identitySecret,
+                    userMessageLimit,
+                    messageId: messageIds[i],
+                    pathElements: merkleProof.siblings,
+                    identityPathIndex: merkleProof.pathIndices,
+                    // Public inputs
+                    x,
+                    externalNullifier,
+                }
+
+                // Test: should generate proof if inputs are correct
+                const witness: bigint[] = await circuit.calculateWitness(inputs, true);
+                await circuit.checkConstraints(witness);
+
+                const { y, nullifier } = calculateOutput(identitySecret, x, externalNullifier,  messageIds[i])
+
+                const outputRoot = await getSignal(circuit, witness, "root")
+                const outputY = await getSignal(circuit, witness, "y")
+                const outputNullifier = await getSignal(circuit, witness, "nullifier")
+
+                assert.equal(outputY, y)
+                //assert.equal(outputRoot, merkleRoot)
+                assert.equal(outputNullifier, nullifier);
+            } else {
+                console.log("messageIds 2", messageIds[i])
+
+                const inputs = {
+                    // Private inputs
+                    identitySecret,
+                    userMessageLimit,
+                    messageId: messageIds[i],
+                    pathElements: merkleProof.siblings,
+                    identityPathIndex: merkleProof.pathIndices,
+                    // Public inputs
+                    x,
+                    externalNullifier,
+                }
+                await assert.rejects(async () => {
+                    await circuit.calculateWitness(inputs, true);
+                }, /Error: Assert Failed/);
+            }
+        }
+    });
+
     it("Should generate witness with correct outputs", async () => {
         // Public inputs
         const x = genFieldElement();
@@ -55,7 +118,7 @@ describe("Test rln.circom", function () {
         const witness: bigint[] = await circuit.calculateWitness(inputs, true);
         await circuit.checkConstraints(witness);
 
-        const {y, nullifier} = calculateOutput(identitySecret, x, externalNullifier, messageId)
+        const { y, nullifier } = calculateOutput(identitySecret, x, externalNullifier, messageId)
 
         const outputRoot = await getSignal(circuit, witness, "root")
         const outputY = await getSignal(circuit, witness, "y")
@@ -96,4 +159,6 @@ describe("Test rln.circom", function () {
         }
     });
 
+
+    
 });
